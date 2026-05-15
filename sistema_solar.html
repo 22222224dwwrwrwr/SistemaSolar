@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sistema Solar 3D</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#000;overflow:hidden;font-family:'Segoe UI',sans-serif;color:#e0f0ff;user-select:none}
+  canvas{display:block;width:100vw;height:100vh}
+
+  #panel{
+    position:fixed;top:16px;right:16px;width:245px;
+    background:rgba(2,8,22,0.93);border:1px solid rgba(80,160,255,0.22);
+    border-radius:13px;overflow:hidden;
+    transition:transform .35s ease,opacity .35s ease;
+    transform:translateX(280px);opacity:0;pointer-events:none;
+  }
+  #panel.show{transform:translateX(0);opacity:1;pointer-events:all}
+  #panel-header{padding:14px 16px 10px;background:rgba(10,30,70,0.55);border-bottom:1px solid rgba(80,160,255,0.12)}
+  #p-name{font-size:20px;font-weight:700;color:#a8d8ff;letter-spacing:.4px}
+  #p-type{font-size:10px;color:#4a7a9a;letter-spacing:2px;text-transform:uppercase;margin-top:2px}
+  #panel-body{padding:12px 16px}
+  .pr{display:flex;justify-content:space-between;align-items:baseline;
+    padding:5px 0;border-bottom:1px solid rgba(80,160,255,0.07);font-size:12px}
+  .pr:last-child{border-bottom:none}
+  .pk{color:#5a8ab0}.pv{color:#c0e0ff;font-weight:500;text-align:right}
+  #p-desc{font-size:11.5px;color:#7aaccf;line-height:1.65;margin:10px 0 8px;
+    padding:8px;background:rgba(10,30,70,0.5);border-radius:6px}
+  .mot-box{padding:8px;background:rgba(10,30,70,0.5);border-radius:6px}
+  .mot-title{font-size:10px;color:#4a7a9a;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px}
+  .mr{font-size:11px;color:#7aaccf;margin-bottom:3px}.mr b{color:#b8d8f0}
+  #close-btn{position:absolute;top:10px;right:12px;background:none;border:none;
+    color:#5a8ab0;font-size:18px;cursor:pointer;padding:2px 6px;border-radius:4px}
+  #close-btn:hover{color:#a0c8f0;background:rgba(80,160,255,0.1)}
+
+  #hint{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+    font-size:11px;color:rgba(100,150,200,0.5);letter-spacing:.5px;
+    background:rgba(0,0,0,0.35);padding:5px 14px;border-radius:20px;pointer-events:none}
+  #speed-wrap{position:fixed;bottom:16px;right:16px;
+    background:rgba(2,8,22,0.88);border:1px solid rgba(80,160,255,0.18);
+    border-radius:10px;padding:8px 14px;display:flex;align-items:center;gap:10px}
+  #speed-wrap label{font-size:11px;color:#5a8ab0}
+  #speed-wrap input{width:90px;accent-color:#4080cc;cursor:pointer}
+  #pause-btn{background:rgba(20,50,110,0.7);border:1px solid rgba(80,160,255,0.2);
+    color:#80b8e0;border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer}
+  #pause-btn:hover{background:rgba(40,80,160,0.8)}
+
+  #legend{position:fixed;top:16px;left:16px;
+    background:rgba(2,8,22,0.88);border:1px solid rgba(80,160,255,0.18);
+    border-radius:10px;padding:10px 14px;font-size:11px;color:#5a8ab0}
+  #legend h4{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:8px;color:#4a7a9a}
+  .leg-row{display:flex;align-items:center;gap:7px;margin-bottom:5px;color:#7aaccf;cursor:pointer;transition:color .2s}
+  .leg-row:hover{color:#b0d8f8}
+  .leg-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="panel">
+  <button id="close-btn" onclick="closePanel()">✕</button>
+  <div id="panel-header">
+    <div id="p-name">—</div>
+    <div id="p-type">—</div>
+  </div>
+  <div id="panel-body">
+    <div id="p-desc"></div>
+    <div id="p-rows"></div>
+    <div class="mot-box">
+      <div class="mot-title">⟳ Movimientos</div>
+      <div class="mr">Rotación: <b id="m-r">—</b></div>
+      <div class="mr">Traslación: <b id="m-t">—</b></div>
+      <div class="mr">Inclinación eje: <b id="m-i">—</b></div>
+    </div>
+  </div>
+</div>
+
+<div id="legend">
+  <h4>Planetas</h4>
+</div>
+
+<div id="hint">🖱 Arrastrar para girar &nbsp;·&nbsp; Scroll para zoom &nbsp;·&nbsp; Clic en un planeta para info</div>
+<div id="speed-wrap">
+  <button id="pause-btn" onclick="togglePause()">⏸ Pausar</button>
+  <label>Velocidad</label>
+  <input type="range" id="spd" min="0.05" max="6" step="0.05" value="1">
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/*
+  ESTRUCTURA DE ARCHIVOS:
+  ├── index.html  (este archivo)
+  └── images/
+        sol.jpg
+        mercurio.jpg
+        venus.jpg
+        tierra.jpg
+        marte.jpg
+        jupiter.jpg
+        saturno.jpg
+        urano.jpg
+        neptuno.jpg
+
+  Si falta alguna imagen, el planeta se muestra en su color base.
+  Saturno siempre tiene sus anillos independientemente.
+*/
+
+const PLANETS = [
+  {
+    name:"Mercurio", img:"images/mercurio.jpg",
+    type:"Planeta Telúrico", col:0xb5a99a, size:.38, orbit:4.2, speed:4.15, rot:.0015, tilt:.03,
+    dia:"4,879 km", masa:"3.3×10²³ kg", temp:"-180 / +430 °C", lunas:"0", dist:"57.9M km del Sol",
+    desc:"El más pequeño y cercano al Sol. Un año dura sólo 88 días terrestres. Carece de atmósfera significativa.",
+    mr:"59 días terrestres", mt:"88 días terrestres", mi:"0.03°"
+  },
+  {
+    name:"Venus", img:"images/venus.jpg",
+    type:"Planeta Telúrico", col:0xe8c98a, size:.95, orbit:6.0, speed:1.62, rot:.0004, tilt:177.4,
+    dia:"12,104 km", masa:"4.87×10²⁴ kg", temp:"462 °C (media)", lunas:"0", dist:"108.2M km del Sol",
+    desc:"El más caliente del sistema solar. Gira en sentido contrario al resto y muy lentamente. Atmósfera de CO₂.",
+    mr:"243 días (retrógrada)", mt:"225 días terrestres", mi:"177.4°"
+  },
+  {
+    name:"Tierra", img:"images/tierra.jpg",
+    type:"Planeta Telúrico", col:0x4a9edd, size:1.0, orbit:8.0, speed:1.0, rot:.02, tilt:23.5,
+    dia:"12,742 km", masa:"5.97×10²⁴ kg", temp:"-88 / +58 °C", lunas:"1 (Luna)", dist:"149.6M km del Sol",
+    desc:"Nuestro hogar. El único planeta conocido con vida y con agua líquida estable en superficie.",
+    mr:"23h 56min", mt:"365.25 días", mi:"23.5°"
+  },
+  {
+    name:"Marte", img:"images/marte.jpg",
+    type:"Planeta Telúrico", col:0xc1440e, size:.53, orbit:10.5, speed:.53, rot:.019, tilt:25.2,
+    dia:"6,779 km", masa:"6.39×10²³ kg", temp:"-125 / +20 °C", lunas:"2 (Fobos, Deimos)", dist:"227.9M km del Sol",
+    desc:"El planeta rojo. Alberga el Olimpo Mons, el volcán más alto del sistema solar con 22 km de altura.",
+    mr:"24h 37min", mt:"687 días terrestres", mi:"25.2°"
+  },
+  {
+    name:"Júpiter", img:"images/jupiter.jpg",
+    type:"Gigante Gaseoso", col:0xc88b3a, size:2.8, orbit:15.0, speed:.084, rot:.045, tilt:3.1,
+    dia:"139,820 km", masa:"1.9×10²⁷ kg", temp:"-108 °C (nubes)", lunas:"95 conocidas", dist:"778.5M km del Sol",
+    desc:"El mayor planeta del sistema solar. Su Gran Mancha Roja es una tormenta activa desde hace siglos.",
+    mr:"9h 55min", mt:"11.86 años", mi:"3.1°"
+  },
+  {
+    name:"Saturno", img:"images/saturno.jpg",
+    type:"Gigante Gaseoso", col:0xe4d191, size:2.3, orbit:19.5, speed:.034, rot:.038, tilt:26.7, rings:true,
+    dia:"116,460 km", masa:"5.68×10²⁶ kg", temp:"-138 °C (media)", lunas:"146 conocidas", dist:"1,432M km del Sol",
+    desc:"Famoso por sus espectaculares anillos de hielo y roca. Su densidad es tan baja que flotaría en agua.",
+    mr:"10h 33min", mt:"29.46 años", mi:"26.7°"
+  },
+  {
+    name:"Urano", img:"images/urano.jpg",
+    type:"Gigante de Hielo", col:0x7de8e8, size:1.7, orbit:23.5, speed:.012, rot:.03, tilt:97.8,
+    dia:"50,724 km", masa:"8.68×10²⁵ kg", temp:"-195 °C (media)", lunas:"28 conocidas", dist:"2,871M km del Sol",
+    desc:"Rota casi de lado con una inclinación de 98°. Tiene anillos tenues y un color azul-verdoso único.",
+    mr:"17h 14min (retrógrada)", mt:"84 años", mi:"97.8°"
+  },
+  {
+    name:"Neptuno", img:"images/neptuno.jpg",
+    type:"Gigante de Hielo", col:0x4b70dd, size:1.6, orbit:27.5, speed:.006, rot:.032, tilt:28.3,
+    dia:"49,244 km", masa:"1.02×10²⁶ kg", temp:"-201 °C (media)", lunas:"16 conocidas", dist:"4,495M km del Sol",
+    desc:"El planeta más lejano del sistema solar. Sus vientos son los más rápidos: hasta 2,100 km/h.",
+    mr:"16h 6min", mt:"164.8 años", mi:"28.3°"
+  },
+];
+
+const LEG_COLORS = ['#b5a99a','#e8c98a','#4a9edd','#c1440e','#c88b3a','#e4d191','#7de8e8','#4b70dd'];
+
+// ---- RENDERER ----
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 2000);
+
+// ---- ILUMINACIÓN ----
+scene.add(new THREE.AmbientLight(0x223366, 1.8));
+scene.add(new THREE.PointLight(0xffe8b0, 4.5, 400));
+
+// ---- ESTRELLAS DE FONDO ----
+(()=>{
+  const geo = new THREE.BufferGeometry();
+  const n = 3500, pos = new Float32Array(n*3);
+  for(let i=0;i<n*3;i++) pos[i] = (Math.random()-.5)*900;
+  geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  scene.add(new THREE.Points(geo, new THREE.PointsMaterial({color:0xffffff,size:.22,sizeAttenuation:true})));
+})();
+
+// ---- SOL ----
+const sunMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(2.6,48,48),
+  new THREE.MeshBasicMaterial({color:0xffdd44})
+);
+sunMesh.userData = {isSun:true};
+scene.add(sunMesh);
+
+const loader = new THREE.TextureLoader();
+
+// Cargar textura del sol (falla silenciosamente si no existe)
+loader.load('images/sol.jpg', tex=>{
+  sunMesh.material.map = tex;
+  sunMesh.material.color.set(0xffffff);
+  sunMesh.material.needsUpdate = true;
+});
+
+// ---- PLANETAS ----
+const meshes = [];
+const angles = [];
+const legEl  = document.getElementById('legend');
+
+PLANETS.forEach((p, i) => {
+  // Órbita
+  const orb = new THREE.Mesh(
+    new THREE.RingGeometry(p.orbit-.035, p.orbit+.035, 160),
+    new THREE.MeshBasicMaterial({color:0x1a2e55, side:THREE.DoubleSide, transparent:true, opacity:.5})
+  );
+  orb.rotation.x = Math.PI/2;
+  scene.add(orb);
+
+  // Planeta
+  const mat  = new THREE.MeshPhongMaterial({color:p.col, shininess:28});
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(p.size*.62, 48, 48), mat);
+  mesh.rotation.z = THREE.MathUtils.degToRad(p.tilt || 0);
+  mesh.userData   = {index:i};
+  scene.add(mesh);
+  meshes.push(mesh);
+  angles.push(Math.random() * Math.PI * 2);
+
+  // Cargar imagen desde /images/ (silencioso si no existe)
+  loader.load(p.img, tex=>{
+    mat.map = tex;
+    mat.color.set(0xffffff);
+    mat.needsUpdate = true;
+  });
+
+  // Anillos de Saturno
+  if(p.rings){
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(p.size*.75, p.size*1.32, 128),
+      new THREE.MeshBasicMaterial({color:0xc8b878, side:THREE.DoubleSide, transparent:true, opacity:.78})
+    );
+    ring.rotation.x = Math.PI/2.3;
+    mesh.add(ring);
+  }
+
+  // Leyenda lateral
+  const row = document.createElement('div');
+  row.className = 'leg-row';
+  row.innerHTML = `<div class="leg-dot" style="background:${LEG_COLORS[i]}"></div>${p.name}`;
+  row.onclick = () => showPlanet(i);
+  legEl.appendChild(row);
+});
+
+// ---- CÁMARA ORBITAL (drag + scroll) ----
+let isDrag = false, px = 0, py = 0;
+let clickedAt = {x:0, y:0};
+let sph = {theta:.5, phi:1.1, r:52};
+
+function camUpdate(){
+  camera.position.set(
+    sph.r * Math.sin(sph.phi) * Math.sin(sph.theta),
+    sph.r * Math.cos(sph.phi),
+    sph.r * Math.sin(sph.phi) * Math.cos(sph.theta)
+  );
+  camera.lookAt(0,0,0);
+}
+camUpdate();
+
+canvas.addEventListener('mousedown', e=>{
+  isDrag=true; px=e.clientX; py=e.clientY;
+  clickedAt={x:e.clientX,y:e.clientY};
+});
+window.addEventListener('mouseup', ()=>isDrag=false);
+window.addEventListener('mousemove', e=>{
+  if(!isDrag) return;
+  sph.theta -= (e.clientX-px)*.005;
+  sph.phi    = Math.max(.08, Math.min(Math.PI-.08, sph.phi+(e.clientY-py)*.005));
+  px=e.clientX; py=e.clientY;
+  camUpdate();
+});
+canvas.addEventListener('wheel', e=>{
+  sph.r = Math.max(7, Math.min(130, sph.r+e.deltaY*.055));
+  camUpdate();
+},{passive:true});
+
+// Touch
+let ts = null;
+canvas.addEventListener('touchstart', e=>{
+  if(e.touches.length===1){ ts={x:e.touches[0].clientX,y:e.touches[0].clientY}; isDrag=true; }
+},{passive:true});
+canvas.addEventListener('touchend',   ()=>{ isDrag=false; ts=null; });
+canvas.addEventListener('touchmove',  e=>{
+  if(!isDrag||!ts||e.touches.length!==1) return;
+  sph.theta -= (e.touches[0].clientX-ts.x)*.005;
+  sph.phi    = Math.max(.08, Math.min(Math.PI-.08, sph.phi+(e.touches[0].clientY-ts.y)*.005));
+  ts={x:e.touches[0].clientX,y:e.touches[0].clientY};
+  camUpdate();
+},{passive:true});
+
+// ---- RAYCASTER / CLIC ----
+const ray = new THREE.Raycaster();
+const mv  = new THREE.Vector2();
+
+canvas.addEventListener('click', e=>{
+  // ignorar si fue un drag
+  if(Math.abs(e.clientX-clickedAt.x)>5 || Math.abs(e.clientY-clickedAt.y)>5) return;
+  mv.x =  (e.clientX/innerWidth)*2-1;
+  mv.y = -(e.clientY/innerHeight)*2+1;
+  ray.setFromCamera(mv, camera);
+  const hits = ray.intersectObjects([sunMesh,...meshes]);
+  if(!hits.length){ closePanel(); return; }
+  const obj = hits[0].object;
+  obj.userData.isSun ? showSun() : showPlanet(obj.userData.index);
+});
+
+// ---- PANEL INFO ----
+function showPanel(name,type,desc,rows,mr,mt,mi){
+  document.getElementById('p-name').textContent = name;
+  document.getElementById('p-type').textContent = type;
+  document.getElementById('p-desc').textContent = desc;
+  document.getElementById('m-r').textContent    = mr;
+  document.getElementById('m-t').textContent    = mt;
+  document.getElementById('m-i').textContent    = mi;
+  document.getElementById('p-rows').innerHTML   = rows.map(([k,v])=>
+    `<div class="pr"><span class="pk">${k}</span><span class="pv">${v}</span></div>`
+  ).join('');
+  document.getElementById('panel').classList.add('show');
+}
+
+function showPlanet(i){
+  const p = PLANETS[i];
+  showPanel(p.name, p.type, p.desc,
+    [['Diámetro',p.dia],['Masa',p.masa],['Temperatura',p.temp],['Lunas',p.lunas],['Dist. al Sol',p.dist]],
+    p.mr, p.mt, p.mi);
+}
+
+function showSun(){
+  showPanel('Sol','Estrella — Tipo G2V',
+    'Centro del sistema solar. Contiene el 99.86% de la masa total del sistema. Su núcleo alcanza 15 millones °C.',
+    [['Diámetro','1,392,700 km'],['Masa','1.99×10³⁰ kg'],['Temp. superficie','5,500 °C'],['Edad','~4,600M años']],
+    '25–35 días (varía por latitud)','No aplica — es la estrella central','7.25° respecto la eclíptica');
+}
+
+function closePanel(){ document.getElementById('panel').classList.remove('show'); }
+window.closePanel = closePanel;
+
+// ---- ANIMACIÓN ----
+let paused = false, spd = 1;
+document.getElementById('spd').addEventListener('input', e=>spd=parseFloat(e.target.value));
+
+function togglePause(){
+  paused = !paused;
+  document.getElementById('pause-btn').textContent = paused ? '▶ Reanudar' : '⏸ Pausar';
+}
+window.togglePause = togglePause;
+
+(function loop(){
+  requestAnimationFrame(loop);
+  if(!paused){
+    sunMesh.rotation.y += .001 * spd;
+    PLANETS.forEach((p,i)=>{
+      angles[i] += p.speed * .005 * spd;
+      meshes[i].position.set(
+        Math.cos(angles[i]) * p.orbit,
+        0,
+        Math.sin(angles[i]) * p.orbit
+      );
+      meshes[i].rotation.y += p.rot * spd;
+    });
+  }
+  renderer.render(scene, camera);
+})();
+
+window.addEventListener('resize', ()=>{
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+});
+</script>
+</body>
+</html>
